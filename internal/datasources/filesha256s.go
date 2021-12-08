@@ -1,4 +1,4 @@
-package provider
+package datasources
 
 import (
 	"context"
@@ -15,11 +15,11 @@ import (
 	homedir "github.com/mitchellh/go-homedir"
 )
 
-func dataSourceFileSha256s() *schema.Resource {
+func FileSha256s() *schema.Resource {
 	return &schema.Resource{
 		Description: "Hashes all files with consistent ordering",
 
-		ReadContext: dataSourceFileSha256sRead,
+		ReadContext: fileSha256sRead,
 
 		Schema: map[string]*schema.Schema{
 			"files": {
@@ -28,18 +28,26 @@ func dataSourceFileSha256s() *schema.Resource {
 				Elem:        schema.TypeString,
 				Required:    true,
 			},
-			"sha256": {
+			"hex": {
 				Type:        schema.TypeString,
-				Description: "The combined digest of all files.",
+				Description: "The combined hash of all files in hex format",
 				Computed:    true,
 			},
 		},
 	}
 }
 
-func dataSourceFileSha256sRead(ctx context.Context, r *schema.ResourceData, d interface{}) diag.Diagnostics {
+func fileSha256sRead(ctx context.Context, r *schema.ResourceData, d interface{}) diag.Diagnostics {
 	fi := r.Get("files")
 	files := fi.([]string)
+	hash, err := generateSha256OfFiles(files)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	return diag.FromErr(r.Set("hex", hash))
+}
+
+func generateSha256OfFiles(files []string) (string, error) {
 
 	sort.Strings(files)
 
@@ -56,11 +64,10 @@ func dataSourceFileSha256sRead(ctx context.Context, r *schema.ResourceData, d in
 			return err
 		}()
 		if err != nil {
-			return diag.FromErr(err)
+			return "", err
 		}
 	}
-	err := r.Set("sha256", hex.EncodeToString(h.Sum(nil)))
-	return diag.FromErr(err)
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func openFile(baseDir, path string) (*os.File, error) {
